@@ -1,0 +1,188 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // url      = env("DATABASE_URL") // Décommenter et définir DATABASE_URL dans .env
+}
+
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         String   @default("customer")
+  phoneNumber  String?  @map("phone_number")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+  carts         Cart[]
+  orders        Order[]
+  payments      Payment[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(200)
+  description   String?  @db.Text
+  price         Decimal  @db.Decimal(10, 2)
+  stock         Int      @default(0)
+  isActive      Boolean  @default(true) @map("is_active")
+  imageUrl      String?  @map("image_url") @db.VarChar(500)
+  imagePublicId String?  @map("image_public_id") @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([isActive])
+  @@map("products")
+}
+
+model Cart {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id         Int     @id @default(autoincrement())
+  cartId     Int     @map("cart_id")
+  productId  Int     @map("product_id")
+  quantity   Int     @default(1)
+  priceAtAdd Decimal @map("price_at_add") @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+
+model Order {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  orderNumber     String   @unique @map("order_number")
+  status          String   @default("pending")
+  totalAmount     Decimal  @map("total_amount") @db.Decimal(10, 2)
+  shippingAddress String   @map("shipping_address")
+  paymentMethod   String   @map("payment_method")
+  paymentId       String?  @map("payment_id")
+  paidAt          DateTime? @map("paid_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+  cancelledBy     Int?     @map("cancelled_by")
+  cancellationReason String? @map("cancellation_reason")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items   OrderItem[]
+  payment Payment?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          Int     @id @default(autoincrement())
+  orderId     Int     @map("order_id")
+  productId   Int     @map("product_id")
+  productName String  @map("product_name")
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(10, 2)
+  totalPrice  Decimal @map("total_price") @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+
+model Payment {
+  id             Int      @id @default(autoincrement())
+  orderId        Int      @unique @map("order_id")
+  userId         Int      @map("user_id")
+  transactionId  String   @unique @map("transaction_id")
+  amount         Decimal  @db.Decimal(10, 2)
+  status         String   @default("pending")
+  paymentMethod  String   @map("payment_method")
+  cardLast4      String?  @map("card_last4")
+  cardBrand      String?  @map("card_brand")
+  errorMessage   String?  @map("error_message")
+  paidAt         DateTime? @map("paid_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
+
+model AuditLog {
+  id            BigInt   @id @default(autoincrement())
+  correlationId String   @map("correlation_id")
+  userId        Int?     @map("user_id")
+  action        String
+  resource      String
+  resourceId    String?  @map("resource_id")
+  oldValue      Json?    @map("old_value")
+  newValue      Json?    @map("new_value")
+  ipAddress     String   @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  status        String
+  errorMessage  String?  @map("error_message")
+  durationMs    Int?     @map("duration_ms")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([correlationId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
